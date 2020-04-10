@@ -1,0 +1,8 @@
+apiVersion: app.csye7374/v1alpha1
+kind: AppService
+metadata:
+  name: example-appservice
+spec:
+  # Add fields here
+  username: "hemal"
+  secretname: "hemal"
