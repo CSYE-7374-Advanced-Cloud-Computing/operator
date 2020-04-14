@@ -2,8 +2,15 @@ package appservice
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 
 	appv1alpha1 "github.com/CSYE-7374-Advanced-Cloud-Computing/operator/pkg/apis/app/v1alpha1"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/iam"
+	"github.com/aws/aws-sdk-go/service/s3"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -111,6 +118,7 @@ func (r *ReconcileAppService) Reconcile(request reconcile.Request) (reconcile.Re
 
 	// Check if this Pod already exists
 	found := &corev1.Secret{}
+
 	err = r.client.Get(context.TODO(), types.NamespacedName{Name: user_secret.Name, Namespace: user_secret.Namespace}, found)
 	if err != nil && errors.IsNotFound(err) {
 		reqLogger.Info("Creating a new secret", "secret.Namespace", user_secret.Namespace, "secret.Name", user_secret.Name)
@@ -154,14 +162,181 @@ func (r *ReconcileAppService) Reconcile(request reconcile.Request) (reconcile.Re
 // }
 
 func newSecretForCR(cr *appv1alpha1.AppService) *corev1.Secret {
-	b := []byte("hemal")
+
+	creates3folder(cr.Spec.Username, "csye7374-operator-s3")
+
+	user := createIamUser(cr.Spec.Username)
+
+	// fmt.Println("generated keys: ", *user)
+
+	accesskey := []byte(*user.AccessKeyId)
+	secretkey := []byte(*user.SecretAccessKey)
+
+	cr.Status.Setupcomplete = true
+
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      cr.Spec.Secretname,
 			Namespace: cr.Namespace,
 		},
 		Data: map[string][]byte{
-			"AccesKey": b,
+			"AccesKey":  accesskey,
+			"SecretKey": secretkey,
 		},
 	}
+}
+
+func creates3folder(folderName string, bucket string) {
+	sess, _ := session.NewSessionWithOptions(session.Options{
+		Profile: "kops",
+	})
+
+	svc := s3.New(sess, &aws.Config{Region: aws.String("us-east-1")})
+
+	params := s3.PutObjectInput{
+		Bucket: &bucket,
+		Key:    &folderName,
+	}
+
+	_, err := svc.PutObject(&params)
+
+	fmt.Println("Folder ", folderName, "created in ", bucket, "bucket")
+
+	if err != nil {
+		fmt.Println("S3 Error: ", err)
+	}
+}
+
+func createIamUser(username string) *iam.AccessKey {
+	sess, _ := session.NewSessionWithOptions(session.Options{
+		Profile: "kops",
+	})
+	svc := iam.New(sess)
+
+	user, err := svc.GetUser(&iam.GetUserInput{
+		UserName: &username,
+	})
+
+	if err != nil {
+		if awserr, ok := err.(awserr.Error); ok && awserr.Code() == "NoSuchEntity" {
+			result, err := svc.CreateUser(&iam.CreateUserInput{
+				UserName: &username,
+			})
+			if err != nil {
+				fmt.Println("create user error:", err)
+			} else {
+				fmt.Println("New User Created: \n", result.User)
+				key := createAccessKey(*result.User.UserName)
+				createPolicy(username, "csye7374-operator-s3", "295717451775")
+				return key
+			}
+		}
+	}
+	fmt.Println("User present: ", user.User)
+	return createAccessKey(*user.User.UserName)
+}
+
+func createAccessKey(username string) *iam.AccessKey {
+	sess, _ := session.NewSessionWithOptions(session.Options{
+		Profile: "kops",
+	})
+	svc := iam.New(sess)
+
+	keyInput := &iam.ListAccessKeysInput{
+		UserName: &username,
+	}
+
+	key, _ := svc.ListAccessKeys(keyInput)
+
+	// fmt.Println(*key)
+	// fmt.Println(err)
+
+	input := &iam.CreateAccessKeyInput{
+		UserName: &username,
+	}
+
+	if len(*&key.AccessKeyMetadata) == 0 {
+		result, _ := svc.CreateAccessKey(input)
+		fmt.Println("User Credentials Created: \n", result.AccessKey)
+		// fmt.Println(result.AccessKey)
+		// fmt.Println(err)
+		return result.AccessKey
+	} else {
+		keyDeleteInput := iam.DeleteAccessKeyInput{
+			AccessKeyId: *&key.AccessKeyMetadata[0].AccessKeyId,
+			UserName:    &username,
+		}
+		svc.DeleteAccessKey(&keyDeleteInput)
+		fmt.Println("Credentials Deleted")
+		result, _ := svc.CreateAccessKey(input)
+		fmt.Println("User Credentials Created: \n", result.AccessKey)
+		// fmt.Println(reflect.TypeOf(result.AccessKey))
+		// fmt.Println(err)
+		return result.AccessKey
+	}
+}
+
+type PolicyDocument struct {
+	Version   string
+	Statement []StatementEntry
+}
+
+type StatementEntry struct {
+	Effect   string
+	Action   []string
+	Resource *string
+}
+
+func createPolicy(username string, bucket string, awsaccount string) {
+	sess, _ := session.NewSessionWithOptions(session.Options{
+		Profile: "kops",
+	})
+	svc := iam.New(sess)
+
+	policy := PolicyDocument{
+		Version: "2012-10-17",
+		Statement: []StatementEntry{
+			StatementEntry{
+				Effect: "Allow",
+				Action: []string{
+					"s3:*",
+				},
+				Resource: aws.String("arn:aws:s3:::" + bucket + "/" + username + "/*"),
+			},
+		},
+	}
+
+	b, err := json.Marshal(&policy)
+	if err != nil {
+		fmt.Println(err)
+	}
+	policyinput := iam.CreatePolicyInput{
+		PolicyDocument: aws.String(string(b)),
+		PolicyName:     aws.String("s3-" + username),
+	}
+
+	arn := aws.String("arn:aws:iam::" + awsaccount + ":policy/s3-" + username)
+
+	getpolicyinput := iam.GetPolicyInput{
+		PolicyArn: arn,
+	}
+
+	_, policyerr := svc.GetPolicy(&getpolicyinput)
+
+	if policyerr != nil {
+		awserr, ok := policyerr.(awserr.Error)
+		if ok && awserr.Code() == "NoSuchEntity" {
+			fmt.Println("Creating a user Policy")
+			result, _ := svc.CreatePolicy(&policyinput)
+			fmt.Println("User Policy Created:", *result)
+		}
+	}
+	attachinput := iam.AttachUserPolicyInput{
+		PolicyArn: arn,
+		UserName:  &username,
+	}
+
+	svc.AttachUserPolicy(&attachinput)
+	fmt.Println("User Policy attached to user ", username)
+
 }
