@@ -8,6 +8,7 @@ import (
 	appv1alpha1 "github.com/CSYE-7374-Advanced-Cloud-Computing/operator/pkg/apis/app/v1alpha1"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/s3"
@@ -109,24 +110,28 @@ func (r *ReconcileAppService) Reconcile(request reconcile.Request) (reconcile.Re
 
 	// Define a new Pod object
 	// pod := newPodForCR(instance)
-	user_secret := newSecretForCR(instance)
+	// user_secret := newSecretForCR(instance, r)
 
 	// Set AppService instance as the owner and controller
-	if err := controllerutil.SetControllerReference(instance, user_secret, r.scheme); err != nil {
-		return reconcile.Result{}, err
-	}
 
 	// Check if this Pod already exists
 	found := &corev1.Secret{}
 
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: user_secret.Name, Namespace: user_secret.Namespace}, found)
+	err = r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Spec.Secretname, Namespace: instance.Namespace}, found)
 	if err != nil && errors.IsNotFound(err) {
+		user_secret := newSecretForCR(instance, r)
+
+		if err := controllerutil.SetControllerReference(instance, user_secret, r.scheme); err != nil {
+			return reconcile.Result{}, err
+		}
+
 		reqLogger.Info("Creating a new secret", "secret.Namespace", user_secret.Namespace, "secret.Name", user_secret.Name)
 		err = r.client.Create(context.TODO(), user_secret)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
 
+		fmt.Println("reconcile result \n\n\n", reconcile.Result{})
 		// Pod created successfully - don't requeue
 		return reconcile.Result{}, nil
 	} else if err != nil {
@@ -161,34 +166,56 @@ func (r *ReconcileAppService) Reconcile(request reconcile.Request) (reconcile.Re
 // 	}
 // }
 
-func newSecretForCR(cr *appv1alpha1.AppService) *corev1.Secret {
+func newSecretForCR(cr *appv1alpha1.AppService, r *ReconcileAppService) *corev1.Secret {
 
-	creates3folder(cr.Spec.Username, "csye7374-operator-s3")
+	sec, _ := getsecret(r.client, "awscreds", "default")
 
-	user := createIamUser(cr.Spec.Username)
+	bucket := string(sec.Data["bucket"])
 
-	// fmt.Println("generated keys: ", *user)
+	accessKey := string(sec.Data["awsaccesskey"])
 
-	accesskey := []byte(*user.AccessKeyId)
-	secretkey := []byte(*user.SecretAccessKey)
+	secretKey := string(sec.Data["awssecretkey"])
+
+	fmt.Println("====================accesskey========================\n", accessKey)
+	fmt.Println("====================secretkey========================\n", secretKey)
+	fmt.Println("====================bucket========================\n", bucket)
+
+	creates3folder(cr.Spec.Username, bucket, accessKey, secretKey)
+
+	user := createIamUser(cr.Spec.Username, accessKey, secretKey)
+
+	key := *user.AccessKeyId
+	secret := *user.SecretAccessKey
+
+	fmt.Println("=================key===================\n", key)
+	fmt.Println("=================secretkey===================\n", secret)
 
 	cr.Status.Setupcomplete = true
 
-	return &corev1.Secret{
+	res := corev1.Secret{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Secret",
+			APIVersion: "apps/v1beta1",
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      cr.Spec.Secretname,
 			Namespace: cr.Namespace,
 		},
-		Data: map[string][]byte{
-			"AccesKey":  accesskey,
-			"SecretKey": secretkey,
+		StringData: map[string]string{
+			"AccesKey":  key,
+			"SecretKey": secret,
 		},
+		Type: "Opaque",
 	}
+
+	fmt.Println("========================secret stored ============================ ")
+	return &res
 }
 
-func creates3folder(folderName string, bucket string) {
-	sess, _ := session.NewSessionWithOptions(session.Options{
-		Profile: "kops",
+func creates3folder(folderName string, bucket string, accesskey string, secretkey string) {
+	sess, _ := session.NewSession(&aws.Config{
+		Region:      aws.String("us-east-1"),
+		Credentials: credentials.NewStaticCredentials(accesskey, secretkey, ""),
 	})
 
 	svc := s3.New(sess, &aws.Config{Region: aws.String("us-east-1")})
@@ -207,9 +234,10 @@ func creates3folder(folderName string, bucket string) {
 	}
 }
 
-func createIamUser(username string) *iam.AccessKey {
-	sess, _ := session.NewSessionWithOptions(session.Options{
-		Profile: "kops",
+func createIamUser(username string, accesskey string, secretkey string) *iam.AccessKey {
+	sess, _ := session.NewSession(&aws.Config{
+		Region:      aws.String("us-east-1"),
+		Credentials: credentials.NewStaticCredentials(accesskey, secretkey, ""),
 	})
 	svc := iam.New(sess)
 
@@ -226,20 +254,22 @@ func createIamUser(username string) *iam.AccessKey {
 				fmt.Println("create user error:", err)
 			} else {
 				fmt.Println("New User Created: \n", result.User)
-				key := createAccessKey(*result.User.UserName)
-				createPolicy(username, "csye7374-operator-s3", "295717451775")
+				key := createAccessKey(*result.User.UserName, accesskey, secretkey)
+				createPolicy(username, "csye7374-operator-s3", "295717451775", accesskey, secretkey)
 				return key
 			}
 		}
 	}
 	fmt.Println("User present: ", user.User)
-	return createAccessKey(*user.User.UserName)
+	return createAccessKey(*user.User.UserName, accesskey, secretkey)
 }
 
-func createAccessKey(username string) *iam.AccessKey {
-	sess, _ := session.NewSessionWithOptions(session.Options{
-		Profile: "kops",
+func createAccessKey(username string, accesskey string, secretkey string) *iam.AccessKey {
+	sess, _ := session.NewSession(&aws.Config{
+		Region:      aws.String("us-east-1"),
+		Credentials: credentials.NewStaticCredentials(accesskey, secretkey, ""),
 	})
+
 	svc := iam.New(sess)
 
 	keyInput := &iam.ListAccessKeysInput{
@@ -270,8 +300,6 @@ func createAccessKey(username string) *iam.AccessKey {
 		fmt.Println("Credentials Deleted")
 		result, _ := svc.CreateAccessKey(input)
 		fmt.Println("User Credentials Created: \n", result.AccessKey)
-		// fmt.Println(reflect.TypeOf(result.AccessKey))
-		// fmt.Println(err)
 		return result.AccessKey
 	}
 }
@@ -287,9 +315,10 @@ type StatementEntry struct {
 	Resource *string
 }
 
-func createPolicy(username string, bucket string, awsaccount string) {
-	sess, _ := session.NewSessionWithOptions(session.Options{
-		Profile: "kops",
+func createPolicy(username string, bucket string, awsaccount string, accesskey string, secretkey string) {
+	sess, _ := session.NewSession(&aws.Config{
+		Region:      aws.String("us-east-1"),
+		Credentials: credentials.NewStaticCredentials(accesskey, secretkey, ""),
 	})
 	svc := iam.New(sess)
 
@@ -340,3 +369,18 @@ func createPolicy(username string, bucket string, awsaccount string) {
 	fmt.Println("User Policy attached to user ", username)
 
 }
+
+func getsecret(kubeClient client.Client, secrectName string, namespace string) (*corev1.Secret, error) {
+	s := &corev1.Secret{}
+
+	err := kubeClient.Get(context.TODO(), types.NamespacedName{Name: secrectName, Namespace: namespace}, s)
+
+	if err != nil {
+		return nil, err
+	}
+	return s, err
+}
+
+// sess, _ := session.NewSessionWithOptions(session.Options{
+// 	Profile: "kops",
+// })
