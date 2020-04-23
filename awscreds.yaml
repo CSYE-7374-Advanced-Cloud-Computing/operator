@@ -5,6 +5,6 @@ metadata:
   namespace: default
 data:
   bucket: Y3N5ZTczNzQtb3BlcmF0b3ItczM=
-  awsaccesskey: QUtJQVVKV1JDRzc3VjJWS0M0Tlo=
-  awssecretkey: bU8zT0JsU3lOUmNPNUNMejcxdVFyUnVESEJNNXZrOGwxak5ZNmJDQg==
+  awsaccesskey: QUtJQVVKV1JDRzc3NjVGR0hDSFo=
+  awssecretkey: RjRzcXU0aTBESC9JTGJEUFYwK3k5N1dZTmVSMGtSZlFTbmE2OXlUbg==
 type: opaque

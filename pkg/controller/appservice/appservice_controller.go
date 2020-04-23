@@ -201,14 +201,12 @@ func newSecretForCR(cr *appv1alpha1.AppService, r *ReconcileAppService) *corev1.
 			Name:      cr.Spec.Secretname,
 			Namespace: cr.Namespace,
 		},
-		StringData: map[string]string{
-			"AccesKey":  key,
-			"SecretKey": secret,
+		Data: map[string][]byte{
+			"AccesKey":  []byte(key),
+			"SecretKey": []byte(secret),
 		},
 		Type: "Opaque",
 	}
-
-	fmt.Println("========================secret stored ============================ ")
 	return &res
 }
 

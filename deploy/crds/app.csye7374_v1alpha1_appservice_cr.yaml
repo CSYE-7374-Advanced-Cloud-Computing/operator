@@ -1,9 +1,11 @@
 apiVersion: app.csye7374/v1alpha1
 kind: AppService
 metadata:
-  name: example-appservice
-  namespace: default
+  name: csye7374
+  namespace: api
 spec:
-  # Add fields here
   username: "mansi"
   secretname: "mansi-secret"
+status:
+  setupcomplete: "false"
+
