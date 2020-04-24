@@ -192,6 +192,8 @@ func newSecretForCR(cr *appv1alpha1.AppService, r *ReconcileAppService) *corev1.
 
 	cr.Status.Setupcomplete = true
 
+	r.client.Status().Update(context.TODO(), cr)
+
 	res := corev1.Secret{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Secret",
