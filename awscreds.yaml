@@ -4,7 +4,7 @@ metadata:
   name: awscreds
   namespace: default
 data:
-  bucket: Y3N5ZTczNzQtb3BlcmF0b3ItczM=
-  awsaccesskey: QUtJQVVKV1JDRzc3NjVGR0hDSFo=
-  awssecretkey: RjRzcXU0aTBESC9JTGJEUFYwK3k5N1dZTmVSMGtSZlFTbmE2OXlUbg==
+  bucket: Y3N5ZTczNzQtb3BlcmF0b3ItYnVja2V0
+  awsaccesskey: QUtJQVkyVFBTS0c3NTJHTE5NQzI=
+  awssecretkey: UCtEbEN2amxSYjBCeXhwbFdxZ05jVDdkOTN6MHJaelAyNE1OZ1hqRA==
 type: opaque

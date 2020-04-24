@@ -255,7 +255,7 @@ func createIamUser(username string, accesskey string, secretkey string) *iam.Acc
 			} else {
 				fmt.Println("New User Created: \n", result.User)
 				key := createAccessKey(*result.User.UserName, accesskey, secretkey)
-				createPolicy(username, "csye7374-operator-s3", "295717451775", accesskey, secretkey)
+				createPolicy(username, "csye7374-operator-bucket", "606898115007", accesskey, secretkey)
 				return key
 			}
 		}

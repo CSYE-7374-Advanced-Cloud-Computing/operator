@@ -4,8 +4,8 @@ metadata:
   name: csye7374
   namespace: default
 spec:
-  username: "mansi"
-  secretname: "mansi-secret"
+  username: "paavan"
+  secretname: "paavan-secret"
 status:
-  setupcomplete: "false"
+  setupcomplete: false
 
