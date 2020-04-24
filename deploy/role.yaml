@@ -65,3 +65,9 @@ rules:
   - deployments
   verbs:
   - get
+- apiGroups:
+  - app.csye7374
+  resources:
+  - '*'
+  verbs:
+  - '*'

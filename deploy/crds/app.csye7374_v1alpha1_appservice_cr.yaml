@@ -2,7 +2,7 @@ apiVersion: app.csye7374/v1alpha1
 kind: AppService
 metadata:
   name: csye7374
-  namespace: api
+  namespace: default
 spec:
   username: "mansi"
   secretname: "mansi-secret"
