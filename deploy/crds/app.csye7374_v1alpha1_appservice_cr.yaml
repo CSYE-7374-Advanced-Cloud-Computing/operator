@@ -7,5 +7,5 @@ spec:
   username: "paavan"
   secretname: "paavan-secret"
 status:
-  setupcomplete: false
+  setupcomplete: "false"
 

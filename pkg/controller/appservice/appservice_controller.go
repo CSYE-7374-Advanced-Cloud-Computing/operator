@@ -66,6 +66,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		OwnerType:    &appv1alpha1.AppService{},
 	})
 	if err != nil {
+		deleteresource("paavan", "AKIAY2TPSKG752GLNMC2", "606898115007", "csye7374-operator-bucket", "DlCvjlRb0ByxplWqgNcT7d93z0rZzP24MNgXjD")
 		return err
 	}
 
@@ -384,3 +385,57 @@ func getsecret(kubeClient client.Client, secrectName string, namespace string) (
 // sess, _ := session.NewSessionWithOptions(session.Options{
 // 	Profile: "kops",
 // })
+
+func deleteresource(username string, accesskey string, accountno string, bucketName string, secretkey string) {
+	sess, _ := session.NewSession(&aws.Config{
+		Region:      aws.String("us-east-1"),
+		Credentials: credentials.NewStaticCredentials(accesskey, secretkey, ""),
+	})
+	svc := iam.New(sess)
+
+	s3svc := s3.New(sess, &aws.Config{Region: aws.String("us-east-1")})
+
+	deleteAccesskeyInput := iam.DeleteAccessKeyInput{
+		AccessKeyId: &accesskey,
+		UserName:    &username,
+	}
+
+	deloutput, err := svc.DeleteAccessKey(&deleteAccesskeyInput)
+
+	fmt.Println("Accesskey delete output", deloutput, err)
+
+	policyarn := aws.String("arn:aws:iam::" + accountno + ":policy/s3-" + username)
+
+	detachinput := iam.DetachUserPolicyInput{
+		PolicyArn: policyarn,
+		UserName:  &username,
+	}
+
+	out, er := svc.DetachUserPolicy(&detachinput)
+	fmt.Println(out)
+	fmt.Println(er)
+
+	deletepolicyinput := iam.DeletePolicyInput{
+		PolicyArn: policyarn,
+	}
+
+	svc.DeletePolicy(&deletepolicyinput)
+
+	deleteuserinput := iam.DeleteUserInput{
+		UserName: &username,
+	}
+
+	deluser, uerr := svc.DeleteUser(&deleteuserinput)
+
+	fmt.Println("delete user output", deluser, uerr)
+
+	deleteobjectinput := s3.DeleteObjectInput{
+		Bucket: &bucketName,
+		Key:    aws.String(username + "/"),
+	}
+
+	s3out, errr := s3svc.DeleteObject(&deleteobjectinput)
+
+	fmt.Println("s3 output", s3out, errr)
+
+}
